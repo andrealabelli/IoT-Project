@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r planty/backend/requirements.txt -r planty/backend/requirements-dev.txt
+
+      - name: Compile backend sources
+        run: python -m compileall planty/backend/app planty/backend/tests
+
+      - name: Run backend tests
+        working-directory: planty/backend
+        run: pytest -q
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: planty/frontend/react
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: planty/frontend/react
+        run: npm run build
+
+  infra:
+    name: Infra
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker compose
+        run: docker compose -f planty/infra/docker-compose.yml config
