@@ -1,7 +1,5 @@
-import asyncio
 import json
 import logging
-import time
 from datetime import datetime
 
 import paho.mqtt.client as mqtt
@@ -26,22 +24,14 @@ class MqttService:
         self.client.on_message = self.on_message
 
     def start(self):
-        retries = 0
-        while True:
-            try:
-                self.client.connect(settings.mqtt_broker, settings.mqtt_port, 60)
-                self.client.loop_start()
-                logger.info("MQTT loop started")
-                return
-            except Exception as exc:
-                retries += 1
-                wait_s = min(2 * retries, 15)
-                logger.warning("MQTT connect failed (attempt %s): %s", retries, exc)
-                time.sleep(wait_s)
+        self.client.connect(settings.mqtt_broker, settings.mqtt_port, 60)
+        self.client.loop_start()
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
+        logger.info("MQTT connected with %s", reason_code)
         base = settings.mqtt_base_topic
         client.subscribe(f"{base}/+/telemetry")
+        client.subscribe(f"{base}/+/state")
         client.subscribe(f"{base}/+/ack")
 
     def publish(self, topic: str, payload: dict):
@@ -50,11 +40,13 @@ class MqttService:
     def on_message(self, client, userdata, msg):
         try:
             payload = json.loads(msg.payload.decode())
-            parts = msg.topic.split("/")
-            device_id, kind = parts[1], parts[2]
-        except Exception:
+        except json.JSONDecodeError:
             return
-
+        parts = msg.topic.split("/")
+        if len(parts) < 3:
+            return
+        device_id = parts[1]
+        kind = parts[2]
         db: Session = SessionLocal()
         try:
             if kind == "telemetry":
@@ -64,38 +56,26 @@ class MqttService:
         finally:
             db.close()
 
-    def _parse_ts(self, raw):
-        if not raw:
-            return datetime.utcnow()
-        try:
-            return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        except Exception:
-            return datetime.utcnow()
-
     def _handle_telemetry(self, db: Session, device_id: str, payload: dict):
         device = db.query(Device).filter(Device.device_id == device_id).first()
         if not device:
-            db.add(Event(device_id=device_id, level="warning", event_type="error", message="Unknown device telemetry"))
+            db.add(Event(device_id=device_id, event_type="error", level="warning", message="Unknown device telemetry"))
             db.commit()
             return
-
-        air_t = float(payload.get("t_c", payload.get("air_temperature", 0))) + device.temp_offset
-        air_h = float(payload.get("rh", payload.get("air_humidity", 0))) + device.humidity_offset
-        soil = float(payload.get("soil_pct", payload.get("soil_moisture", 0))) + device.soil_offset
         telemetry = Telemetry(
             device_id=device_id,
-            ts=self._parse_ts(payload.get("ts") or payload.get("timestamp")),
-            air_temperature=air_t,
-            air_humidity=air_h,
-            soil_moisture=soil,
+            ts=datetime.fromisoformat(payload.get("timestamp")) if payload.get("timestamp") else datetime.utcnow(),
+            air_temperature=payload.get("air_temperature", 0) + device.temp_offset,
+            air_humidity=payload.get("air_humidity", 0) + device.humidity_offset,
+            soil_moisture=payload.get("soil_moisture", 0) + device.soil_offset,
             battery_voltage=payload.get("battery_voltage"),
             source="device",
         )
         telemetry.state = calculate_state(
             StateInput(
-                soil_moisture=soil,
-                air_temperature=air_t,
-                air_humidity=air_h,
+                soil_moisture=telemetry.soil_moisture,
+                air_temperature=telemetry.air_temperature,
+                air_humidity=telemetry.air_humidity,
                 soil_threshold=device.soil_threshold,
                 temp_min=device.air_temp_min,
                 temp_max=device.air_temp_max,
@@ -104,43 +84,34 @@ class MqttService:
             )
         )
         db.add(telemetry)
-        db.add(Event(device_id=device_id, event_type="telemetry", level="info", message=f"State={telemetry.state.value}"))
+        db.add(Event(device_id=device_id, event_type="telemetry", message=f"State={telemetry.state.value}", level="info"))
         db.commit()
-
         if telemetry.state.value in {"NEEDS_WATER", "MOVE_PLANT", "SENSOR_ERROR"}:
-            asyncio.run(send_telegram(f"Planty alert {device_id}: {telemetry.state.value}"))
+            import asyncio
 
-        asyncio.run(
-            manager.publish(
-                device_id,
-                {
-                    "type": "telemetry",
-                    "air_temperature": telemetry.air_temperature,
-                    "air_humidity": telemetry.air_humidity,
-                    "soil_moisture": telemetry.soil_moisture,
-                    "state": telemetry.state.value,
-                    "timestamp": telemetry.ts.isoformat(),
-                },
-            )
-        )
+            asyncio.run(send_telegram(f"Planty alert {device_id}: {telemetry.state.value}"))
+        import asyncio
+
+        asyncio.run(manager.publish(device_id, {
+            "type": "telemetry",
+            "air_temperature": telemetry.air_temperature,
+            "air_humidity": telemetry.air_humidity,
+            "soil_moisture": telemetry.soil_moisture,
+            "state": telemetry.state.value,
+            "timestamp": telemetry.ts.isoformat(),
+        }))
 
     def _handle_ack(self, db: Session, device_id: str, payload: dict):
-        cmd = payload.get("cmd", payload.get("command", "unknown"))
-        result = payload.get("result", "ERR")
-        cmd_id = payload.get("cmd_id", payload.get("command_id", "n/a"))
-        success = str(result).upper() == "OK"
-        details = payload.get("reason") or payload.get("details")
-
-        db.add(CommandAck(device_id=device_id, command=cmd, command_id=cmd_id, success=success, details=details))
+        ack = CommandAck(
+            device_id=device_id,
+            command=payload.get("command", "unknown"),
+            command_id=payload.get("command_id", "n/a"),
+            success=bool(payload.get("success", False)),
+            details=payload.get("details"),
+        )
+        db.add(ack)
         db.add(Event(device_id=device_id, event_type="ack", level="info", message=json.dumps(payload)))
         db.commit()
-
-        asyncio.run(
-            manager.publish(
-                device_id,
-                {"type": "ack", "command": cmd, "command_id": cmd_id, "success": success, "details": details},
-            )
-        )
 
 
 mqtt_service = MqttService()

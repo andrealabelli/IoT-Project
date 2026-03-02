@@ -1,56 +1,28 @@
 services:
   mosquitto:
     image: eclipse-mosquitto:2
-    restart: unless-stopped
-    ports:
-      - "${MOSQUITTO_PORT:-1883}:1883"
-      - "${MOSQUITTO_WS_PORT:-9001}:9001"
+    ports: ["1883:1883", "9001:9001"]
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-    healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$SYS/broker/version' -C 1 -W 3 >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-
   backend:
     build: ../backend
-    restart: unless-stopped
-    env_file:
-      - ../.env
     environment:
-      SECRET_KEY: ${SECRET_KEY:-change-me}
-      SQLITE_URL: ${SQLITE_URL:-sqlite:///./planty.db}
-      MQTT_BROKER: ${MQTT_BROKER:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_BASE_TOPIC: ${MQTT_BASE_TOPIC:-planty}
+      SECRET_KEY: change-me
+      SQLITE_URL: sqlite:///./planty.db
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+      MQTT_BASE_TOPIC: planty
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    depends_on:
-      mosquitto:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 8
-      start_period: 20s
-
+    ports: ["8000:8000"]
+    depends_on: [mosquitto]
   frontend:
     image: node:20-alpine
-    restart: unless-stopped
     working_dir: /app
     command: sh -c "npm install && npm run dev"
     volumes:
       - ../frontend/react:/app
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
-    ports:
-      - "${FRONTEND_PORT:-5173}:5173"
-    depends_on:
-      backend:
-        condition: service_healthy
+      VITE_API_URL: http://localhost:8000
+    ports: ["5173:5173"]
+    depends_on: [backend]

@@ -1,5 +1,4 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const WS_BASE = import.meta.env.VITE_WS_URL || API.replace('http://', 'ws://').replace('https://', 'wss://')
 
 export async function request(path: string, method = 'GET', body?: unknown) {
   const token = localStorage.getItem('token')
@@ -12,4 +11,4 @@ export async function request(path: string, method = 'GET', body?: unknown) {
   return res.json()
 }
 
-export { API, WS_BASE }
+export { API }
