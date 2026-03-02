@@ -1,20 +1,11 @@
 # Threat Model
 
-- Asset: token JWT, comandi pompa, dati telemetria, credenziali Wi-Fi/MQTT.
-- Superfici: API auth, MQTT broker, link UART, dashboard web.
-- Minacce:
-  - replay comando irrigazione;
-  - accesso non autorizzato API;
-  - spoofing topic MQTT;
-  - corruzione frame seriali.
-- Mitigazioni implementate:
-  - JWT + password hash;
-  - command_id/ack e controllo stato lockout lato UNO;
-  - frame seriale con delimitatori + CRC XOR;
-  - retry con timeout su ESP8266;
-  - segreti fuori repo (`.env`, `secrets.h`).
-- Mitigazioni consigliate produzione:
-  - TLS/ACL su MQTT;
-  - HTTPS reverse-proxy;
-  - rate limit login;
-  - rotazione secret key.
+- Asset: credenziali utente, token JWT, controllo pompa, dati telemetria.
+- Rischi: furto token, comando non autorizzato, spoofing MQTT device.
+- Mitigazioni:
+  - password hash bcrypt;
+  - JWT breve + refresh;
+  - route protette con bearer token;
+  - segreti in `.env`;
+  - produzione dietro reverse proxy HTTPS + MQTT auth/TLS.
+- Hardening consigliato: ACL MQTT per topic per-device, rotazione secret key, rate limiting login.
