@@ -1,5 +1,7 @@
 # Planty – Smart Pot IoT System
 
+[![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+
 Implementazione end-to-end con **Arduino UNO + ESP8266 NodeMCU**:
 - UNO: sensori/logica irrigazione/pompa
 - ESP8266: bridge Wi-Fi/MQTT via seriale con CRC+ACK
