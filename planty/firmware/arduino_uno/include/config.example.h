@@ -1,0 +1,28 @@
+#pragma once
+
+#define DEVICE_ID "plant-uno-01"
+#define DHT_PIN 2
+#define DHT_TYPE DHT22
+#define SOIL_PIN A0
+#define PUMP_PIN 8
+
+#define SOIL_RAW_DRY 850
+#define SOIL_RAW_WET 380
+#define SOIL_OFFSET 0.0f
+#define TEMP_OFFSET 0.0f
+#define RH_OFFSET 0.0f
+
+#define SOIL_LOW_THRESHOLD 35.0f
+#define TEMP_MIN 15.0f
+#define TEMP_MAX 30.0f
+#define RH_MIN 30.0f
+#define RH_MAX 75.0f
+
+#define LOW_SOIL_SAMPLES_REQUIRED 3
+#define BAD_AIR_MINUTES_REQUIRED 5
+#define AUTO_INTERVAL_MS 21600000UL
+#define LOCKOUT_MS 1800000UL
+#define PUMP_DEFAULT_MS 5000
+
+#define TELEMETRY_INTERVAL_MS 10000UL
+#define MOVING_WINDOW 5
