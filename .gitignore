@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+planty/backend/.env
+planty/firmware/esp32/src/config.h
+node_modules/
+dist/
+planty.db
