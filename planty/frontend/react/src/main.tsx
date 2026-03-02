@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, Link, useNavigate, useParams } from 'react-router-dom'
 import { API, request } from './api/client'
 
 type Device = { device_id: string; name: string }
@@ -14,7 +14,7 @@ function Login() {
     localStorage.setItem('token', data.access_token)
     navigate('/')
   }
-  return <form onSubmit={onSubmit}><h2>Login</h2><input name='email' /><input name='password' type='password' /><button>Entra</button></form>
+  return <form onSubmit={onSubmit}><h2>Login</h2><input name='email' placeholder='email'/><input name='password' type='password'/><button>Entra</button></form>
 }
 
 function Home() {
@@ -26,39 +26,29 @@ function Home() {
 function DevicePage() {
   const { id } = useParams()
   const [telemetry, setTelemetry] = React.useState<any>()
-  const [ack, setAck] = React.useState<string>('')
-
   React.useEffect(() => {
     if (!id) return
     request(`/devices/${id}/latest`).then(setTelemetry).catch(() => {})
     const ws = new WebSocket(`${API.replace('http', 'ws')}/ws/${id}`)
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data)
-      if (data.type === 'ack') setAck(`${data.command} ${data.success ? 'OK' : 'ERR'} ${data.details || ''}`)
-      if (data.type === 'telemetry') setTelemetry(data)
-    }
-    const ping = setInterval(() => ws.readyState === 1 && ws.send('keepalive'), 1000)
+    ws.onmessage = (e) => setTelemetry(JSON.parse(e.data))
+    const ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 1000)
     return () => { clearInterval(ping); ws.close() }
   }, [id])
 
   return <div>
-    <h3>Stato</h3>
-    <p>{telemetry?.state || 'N/A'}</p>
+    <h2>Stato</h2><p>{telemetry?.state || 'N/A'}</p>
     <h3>Telemetria</h3>
-    <p>T: {telemetry?.air_temperature}°C</p>
-    <p>RH: {telemetry?.air_humidity}%</p>
-    <p>Soil: {telemetry?.soil_moisture}%</p>
+    <p>T: {telemetry?.air_temperature}</p><p>RH: {telemetry?.air_humidity}</p><p>Soil: {telemetry?.soil_moisture}</p>
     <h3>Comandi</h3>
     <button onClick={() => request(`/devices/${id}/irrigate`, 'POST', { duration_seconds: 5 })}>Irriga ora</button>
     <button onClick={() => request(`/devices/${id}/refresh`, 'POST')}>Aggiorna stato</button>
-    <p>ACK: {ack || 'in attesa'}</p>
     <h3>Calibrazione</h3>
     <button onClick={() => request(`/devices/${id}/calibration`, 'POST', { soil_offset: 0, temp_offset: 0, humidity_offset: 0 })}>Reset offset</button>
   </div>
 }
 
 function App() {
-  return <BrowserRouter><nav><Link to='/'>Home</Link> | <Link to='/login'>Login</Link></nav><Routes><Route path='/' element={<Home />} /><Route path='/login' element={<Login />} /><Route path='/device/:id' element={<DevicePage />} /></Routes></BrowserRouter>
+  return <BrowserRouter><nav><Link to='/'>Home</Link> | <Link to='/login'>Login</Link></nav><Routes><Route path='/login' element={<Login/>}/><Route path='/' element={<Home/>}/><Route path='/device/:id' element={<DevicePage/>}/></Routes></BrowserRouter>
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />)

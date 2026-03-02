@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_admin
-from app.config import settings
 from app.models.database import get_db
 from app.models.entities import Device, Event, Telemetry, User
 from app.models.schemas import CalibrationUpdate, DeviceCreate, DeviceOut, IrrigateRequest, TelemetryOut
@@ -41,7 +40,7 @@ def latest(device_id: str, user: User = Depends(get_current_user), db: Session =
 @router.post("/{device_id}/irrigate")
 def irrigate(device_id: str, payload: IrrigateRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     command_id = str(uuid4())
-    mqtt_service.publish(f"{settings.mqtt_base_topic}/{device_id}/cmd/irrigate", {
+    mqtt_service.publish(f"planty/{device_id}/cmd/irrigate", {
         "command_id": command_id,
         "duration_seconds": payload.duration_seconds,
         "timestamp": datetime.utcnow().isoformat(),
@@ -54,7 +53,7 @@ def irrigate(device_id: str, payload: IrrigateRequest, user: User = Depends(get_
 @router.post("/{device_id}/refresh")
 def refresh(device_id: str, user: User = Depends(get_current_user)):
     command_id = str(uuid4())
-    mqtt_service.publish(f"{settings.mqtt_base_topic}/{device_id}/cmd/ping", {"command_id": command_id, "timestamp": datetime.utcnow().isoformat()})
+    mqtt_service.publish(f"planty/{device_id}/cmd/ping", {"command_id": command_id, "timestamp": datetime.utcnow().isoformat()})
     return {"sent": True, "command_id": command_id}
 
 
