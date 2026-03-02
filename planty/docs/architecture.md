@@ -1,48 +1,30 @@
-# Planty Architecture (Arduino UNO + ESP8266)
+# Planty Architecture
 
-## Hardware split obbligatorio
-- **Arduino UNO**: DHT22 + sensore umidità suolo + logica stato + scheduler irrigazione + controllo pompa.
-- **ESP8266 NodeMCU**: Wi-Fi + MQTT + bridge seriale robusto verso UNO.
+Scelta MCU: **ESP32 DevKit** (Wi-Fi stabile, deep sleep, costo basso).
 
 ```text
-[DHT22 + Soil + Pump]
-        |
-     Arduino UNO
- (state logic + lockout)
-        | UART frame+CRC+ACK
-     ESP8266 NodeMCU
-        | MQTT
-      Mosquitto
-        |
-     FastAPI backend ---- SQLite
-        | WS push <=2s
-      React dashboard
+[ESP32 + DHT22 + Soil + Pump]
+   | MQTT telemetry/state/cmd/ack
+[ Mosquitto ]
+   | subscribed/publish
+[ FastAPI Backend ] --SQLite--> [DB]
+   | REST + WebSocket
+[ React Dashboard ]
+   | Telegram API
+[ Notifications ]
 ```
 
-## Serial protocol UNO <-> ESP8266
-Frame: `$<BODY>*<CRC>\n`
-- CRC: XOR byte-per-byte del BODY (tra `$` e `*`) in HEX a 2 cifre.
-- UNO -> ESP:
-  - `TEL,<deviceId>,<ts>,<tC>,<rh>,<soilRaw>,<soilPct>,<state>,<flags>`
-  - `ACK,<cmdId>,OK`
-  - `ACK,<cmdId>,ERR,<reason>`
-- ESP -> UNO:
-  - `CMD,<cmdId>,IRRIGATE,<ms>`
-  - `CMD,<cmdId>,STATUS`
+## Flussi FR
+- FR1: ESP32 legge DHT22 + terreno, filtra media mobile (firmware) e pubblica ogni intervallo.
+- FR2: stato calcolato su device e ricalcolato nel backend (`calculate_state`).
+- FR3: scheduler locale con lockout (`LOCKOUT_MS`) e trigger solo con suolo basso.
+- FR4: backend invia Telegram su stati critici.
+- FR5: comando remoto dashboard -> backend REST -> MQTT cmd irrigate -> ack.
+- FR6: refresh via ping e lettura latest.
+- FR7: register/login/logout/refresh con JWT e ruoli.
 
-## MQTT topics
-- `planty/<deviceId>/telemetry`
-- `planty/<deviceId>/state`
-- `planty/<deviceId>/cmd/irrigate`
-- `planty/<deviceId>/cmd/ping`
-- `planty/<deviceId>/ack`
-
-## FR/NFR mapping
-- FR1/FR2/FR3 implementati su UNO + validazione stato lato backend.
-- FR4 Telegram lato backend su stati critici.
-- FR5 end-to-end command+ack (dashboard->backend->MQTT->ESP->UART->UNO e ritorno).
-- FR6 refresh via ping/cmd STATUS.
-- FR7 JWT login/register backend + frontend.
-- NFR1 media mobile + offset sensori su UNO e offset lato backend.
-- NFR2 reconnect MQTT/Wi-Fi, retry serial cmd, gestione fault.
-- NFR3 websocket push telemetry/ack 1-2s.
+## NFR mapping
+- NFR2: watchdog, reconnect Wi-Fi/MQTT, eventi persistenti.
+- NFR3: websocket device stream (1s ping client).
+- NFR4: publish interval + deep sleep opzionale.
+- NFR7: modello dati multi-device (`devices`, `telemetry`).
