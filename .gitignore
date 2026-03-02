@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+planty/backend/.env
+planty/firmware/esp32/src/config.h
+planty/firmware/arduino_uno/include/config.h
+planty/firmware/esp8266_bridge/include/secrets.h
+node_modules/
+dist/
+planty.db
